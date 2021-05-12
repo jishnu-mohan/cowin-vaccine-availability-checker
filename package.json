@@ -1,0 +1,15 @@
+{
+  "name": "cowin-vaccine-availability-checker",
+  "version": "1.0.0",
+  "description": "A simple app to check vaccine slot availability",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "jishnu mohan",
+  "license": "ISC",
+  "dependencies": {
+    "node-cron": "^3.0.0",
+    "request": "^2.88.2"
+  }
+}
