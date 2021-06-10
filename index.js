@@ -8,7 +8,11 @@ const TELEGRAM_BOT_API = CONFIG.TELEGRAM_BOT_API
 const VACCINE_AVAILABILITY_API = CONFIG.VACCINE_AVAILABILITY_API
 const DISTRICT_ID = CONFIG.DISTRICT_ID
 
+const vaccineAvailabilityMap = {}
+
 // run every minutes
+
+checkVaccineAvailabilityAndSendMessages()
 cron.schedule('* * * * *', () => {
   checkVaccineAvailabilityAndSendMessages()
 })
@@ -22,6 +26,7 @@ function formatDate () {
 }
 
 function checkVaccineAvailabilityAndSendMessages () {
+  console.log('fetch data from cowin')
   const cowinQs = {
     district_id: DISTRICT_ID,
     date: formatDate()
@@ -37,11 +42,9 @@ function checkVaccineAvailabilityAndSendMessages () {
       return null
     } else {
       const formattedSlotAvailability = formatCowinResponse(body)
+
       if (formattedSlotAvailability.length) {
         sendTelegramMessage(formattedSlotAvailability)
-      } else {
-        console.log('slot unavailable')
-        return null
       }
     }
   })
@@ -49,21 +52,37 @@ function checkVaccineAvailabilityAndSendMessages () {
 
 function formatCowinResponse (cowinResponse) {
   const response = []
+  const curretTimeInMs = Date.now()
   if (cowinResponse && cowinResponse.centers && Array.isArray(cowinResponse.centers) && cowinResponse.centers.length) {
     cowinResponse.centers.forEach(vaccineCenter => {
       if (vaccineCenter.sessions && Array.isArray(vaccineCenter.sessions) && vaccineCenter.sessions.length) {
         vaccineCenter.sessions.forEach(session => {
           if (session.available_capacity > 0) {
-            response.push({
-              centerName: vaccineCenter.name,
-              address: vaccineCenter.address,
-              pinCode: vaccineCenter.pincode,
-              date: session.date,
-              ageLimit: session.min_age_limit,
-              vaccine: session.vaccine,
-              availability: session.available_capacity,
-              slots: session.slots
-            })
+            vaccineAvailabilityMap[vaccineCenter.center_id + ':' + session.date] = {
+              availability: session.available_capacity
+            }
+
+            const vaccineAvailabilityKey = vaccineCenter.center_id + ':' + session.min_age_limit + ':' + session.date
+
+            if (!vaccineAvailabilityMap[vaccineAvailabilityKey] ||
+            !vaccineAvailabilityMap[vaccineAvailabilityKey].lastMsgSentTime ||
+            curretTimeInMs - vaccineAvailabilityMap[vaccineAvailabilityKey].lastMsgSentTime > 600000
+            ) { // send message only if the same message was not sent in the last 5 minutes
+              vaccineAvailabilityMap[vaccineAvailabilityKey] = {
+                availability: session.available_capacity,
+                lastMsgSentTime: curretTimeInMs
+              }
+              response.push({
+                centerName: vaccineCenter.name,
+                address: vaccineCenter.address,
+                pinCode: vaccineCenter.pincode,
+                date: session.date,
+                ageLimit: session.min_age_limit,
+                vaccine: session.vaccine,
+                availability: session.available_capacity,
+                slots: session.slots
+              })
+            }
           }
         })
       }
@@ -90,7 +109,7 @@ function sendTelegramMessage (slotAvailability) {
       if (err) {
         console.error('Error while sending message to telegram', err)
       } else {
-        console.log('Send vaccine slot availability to telegram')
+        console.log('Message sent to telegram')
       }
     })
   })
