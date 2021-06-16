@@ -10,9 +10,7 @@ const DISTRICT_ID = CONFIG.DISTRICT_ID
 
 const vaccineAvailabilityMap = {}
 
-// run every minutes
-
-checkVaccineAvailabilityAndSendMessages()
+// run every minute
 cron.schedule('* * * * *', () => {
   checkVaccineAvailabilityAndSendMessages()
 })
@@ -26,7 +24,7 @@ function formatDate () {
 }
 
 function checkVaccineAvailabilityAndSendMessages () {
-  console.log('fetch data from cowin')
+  console.info('fetch data from cowin')
   const cowinQs = {
     district_id: DISTRICT_ID,
     date: formatDate()
@@ -35,11 +33,17 @@ function checkVaccineAvailabilityAndSendMessages () {
   request.get({
     url: VACCINE_AVAILABILITY_API,
     qs: cowinQs,
+    timeout: 15000,
     json: true
   }, (err, response, body) => {
-    if (err || (body && body.error)) {
-      console.error('Error while fetching vaccine availability details', err, body)
-      return null
+    if (err || !body || (body && body.error)) {
+      if (err && (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT')) {
+        console.error('Cowin api timedout')
+        return null
+      } else {
+        console.error('Error while fetching vaccine availability details', err, body)
+        return null
+      }
     } else {
       const formattedSlotAvailability = formatCowinResponse(body)
 
@@ -67,7 +71,7 @@ function formatCowinResponse (cowinResponse) {
             if (!vaccineAvailabilityMap[vaccineAvailabilityKey] ||
             !vaccineAvailabilityMap[vaccineAvailabilityKey].lastMsgSentTime ||
             curretTimeInMs - vaccineAvailabilityMap[vaccineAvailabilityKey].lastMsgSentTime > 600000
-            ) { // send message only if the same message was not sent in the last 5 minutes
+            ) { // send message only if the same message was not sent in the last 10 minutes
               vaccineAvailabilityMap[vaccineAvailabilityKey] = {
                 availability: session.available_capacity,
                 lastMsgSentTime: curretTimeInMs
@@ -89,7 +93,7 @@ function formatCowinResponse (cowinResponse) {
     })
     return response
   } else {
-    console.log('no centers available')
+    console.info('no centers available')
     return response
   }
 }
@@ -107,9 +111,15 @@ function sendTelegramMessage (slotAvailability) {
       json: true
     }, (err, response, body) => {
       if (err) {
-        console.error('Error while sending message to telegram', err)
+        if (err && (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT')) {
+          console.error('Telegram bot api timedout', err)
+          return null
+        } else {
+          console.error('Error while sending message to telegram', err)
+          return null
+        }
       } else {
-        console.log('Message sent to telegram')
+        console.info('Message sent to telegram')
       }
     })
   })
